@@ -26,7 +26,10 @@ cmake -S . -B build -G "Visual Studio 17 2022"
 
 ```powershell
 .\build\queryforge.exe --help
+.\build\Debug\queryforge.exe run --rows 1000000 --symbol AAPL
 ```
+
+The `run` command generates a synthetic trade dataset and benchmarks a linear scan for the requested symbol.
 
 ## Tests
 
@@ -51,7 +54,13 @@ cmake --build build --target test
 ```
 QueryForge/
 ├── CMakeLists.txt
-├── src/          # application source
-├── tests/        # unit tests (Catch2)
-└── examples/     # example datasets and configs (future phases)
+├── include/queryforge/   # public headers
+│   ├── core/             # domain types (TradeEvent)
+│   ├── data/             # dataset generation
+│   ├── query/            # query strategies and benchmarks
+│   ├── util/             # formatting helpers
+│   └── cli/              # command handlers
+├── src/                  # implementations (mirrors include/)
+├── tests/                # unit tests (Catch2)
+└── examples/             # example datasets and configs (future phases)
 ```

@@ -26,11 +26,24 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(CLI11 Catch2)
 
-add_executable(queryforge src/main.cpp)
-target_link_libraries(queryforge PRIVATE CLI11::CLI11)
+add_library(queryforge_lib
+  src/data/dataset_generator.cpp
+  src/query/linear_scan.cpp
+  src/util/format.cpp
+  src/cli/run_command.cpp
+)
+target_include_directories(queryforge_lib PUBLIC include)
+target_compile_features(queryforge_lib PUBLIC cxx_std_20)
 
-add_executable(queryforge_tests tests/smoke_test.cpp)
-target_link_libraries(queryforge_tests PRIVATE Catch2::Catch2WithMain)
+add_executable(queryforge src/main.cpp)
+target_link_libraries(queryforge PRIVATE queryforge_lib CLI11::CLI11)
+
+add_executable(queryforge_tests
+  tests/smoke_test.cpp
+  tests/data/dataset_generator_test.cpp
+  tests/query/linear_scan_test.cpp
+)
+target_link_libraries(queryforge_tests PRIVATE queryforge_lib Catch2::Catch2WithMain)
 
 enable_testing()
-add_test(NAME smoke COMMAND queryforge_tests)
+add_test(NAME unit COMMAND queryforge_tests)
