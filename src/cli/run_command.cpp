@@ -1,7 +1,9 @@
 #include "queryforge/cli/run_command.hpp"
 
+#include "queryforge/data/csv_schema.hpp"
 #include "queryforge/data/data_loader.hpp"
 #include "queryforge/data/dataset_generator.hpp"
+#include "queryforge/data/table.hpp"
 #include "queryforge/query/query_filter.hpp"
 #include "queryforge/query/strategy.hpp"
 #include "queryforge/recommend/recommendation.hpp"
@@ -11,6 +13,7 @@
 #include <format>
 #include <iostream>
 #include <sstream>
+#include <stdexcept>
 
 namespace {
 
@@ -40,6 +43,13 @@ std::vector<std::string> effective_where_clauses(const RunOptions& options) {
         return options.where_clauses;
     }
     return {"symbol=" + options.symbol};
+}
+
+char parse_delimiter(const std::string& delimiter) {
+    if (delimiter.size() != 1) {
+        throw std::runtime_error("--delimiter must be exactly one character");
+    }
+    return delimiter[0];
 }
 
 void print_text_report(const RunOptions& options,
@@ -127,19 +137,29 @@ void print_json_report(const RunOptions& options,
 }  // namespace
 
 void execute_run(const RunOptions& options) {
-    const std::vector<TradeEvent> events = options.input_path.empty()
-                                               ? generate_dataset(options.rows, options.seed)
-                                               : load_trade_events_csv(options.input_path);
-    const QuerySpec query = parse_query_filters(effective_where_clauses(options));
+    Table table;
+    if (options.input_path.empty()) {
+        table = trade_events_to_table(generate_dataset(options.rows, options.seed));
+    } else {
+        CsvLoadOptions load_options;
+        load_options.delimiter = parse_delimiter(options.delimiter);
+        load_options.infer_schema = options.infer_schema;
+        if (!options.schema.empty()) {
+            load_options.schema = parse_table_schema(options.schema);
+        }
+        table = load_csv_table(options.input_path, load_options);
+    }
+
+    const QuerySpec query = parse_query_filters(effective_where_clauses(options), table.schema);
     const std::vector<StrategyBenchmarkResult> results =
-        benchmark_strategies(events, query, options.strategies, options.runs, options.warmup);
+        benchmark_strategies(table, query, options.strategies, options.runs, options.warmup);
     const BenchmarkMetadata metadata =
         collect_benchmark_metadata(options.warmup, options.runs, options.seed, options.repeat_count);
     const Recommendation recommendation = make_recommendation(results, options.repeat_count);
 
     if (options.output == "json") {
-        print_json_report(options, metadata, query, results, recommendation, events.size());
+        print_json_report(options, metadata, query, results, recommendation, table.rows.size());
     } else {
-        print_text_report(options, metadata, query, results, recommendation, events.size());
+        print_text_report(options, metadata, query, results, recommendation, table.rows.size());
     }
 }

@@ -1,0 +1,7 @@
+user_id,country,age,score,is_paid
+1,US,34,91.2,true
+2,CA,29,77.0,false
+3,US,41,88.4,true
+4,GB,37,62.5,false
+5,US,22,55.0,false
+6,DE,45,93.8,true

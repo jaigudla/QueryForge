@@ -1,0 +1,6 @@
+event_id,level,frame_time_ms,entity_count
+1001,info,16.4,1200
+1002,warn,33.8,1400
+1003,info,15.9,1100
+1004,warn,27.4,1320
+1005,error,48.2,900

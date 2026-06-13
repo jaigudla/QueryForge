@@ -1,7 +1,10 @@
 #include "queryforge/data/data_loader.hpp"
 
-#include <charconv>
+#include "queryforge/data/csv_schema.hpp"
+
+#include <algorithm>
 #include <fstream>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -19,46 +22,28 @@ std::string trim(std::string_view value) {
     return std::string{value.substr(start, end - start + 1)};
 }
 
-std::vector<std::string> split_csv_line(const std::string& line) {
+std::vector<std::string> split_csv_line(const std::string& line, char delimiter) {
     std::vector<std::string> fields;
     std::stringstream stream(line);
     std::string field;
-    while (std::getline(stream, field, ',')) {
+    while (std::getline(stream, field, delimiter)) {
         fields.push_back(trim(field));
     }
     return fields;
 }
 
-template <typename T>
-T parse_number(const std::string& value, const std::string& field, std::size_t line_number) {
-    T parsed{};
-    const char* begin = value.data();
-    const char* end = value.data() + value.size();
-    const auto result = std::from_chars(begin, end, parsed);
-    if (result.ec != std::errc{} || result.ptr != end) {
-        throw std::runtime_error("Invalid " + field + " value on CSV line " +
-                                 std::to_string(line_number) + ": " + value);
-    }
-    return parsed;
-}
-
-double parse_double(const std::string& value, const std::string& field, std::size_t line_number) {
-    try {
-        std::size_t parsed_chars = 0;
-        const double parsed = std::stod(value, &parsed_chars);
-        if (parsed_chars != value.size()) {
-            throw std::invalid_argument("trailing characters");
+void validate_schema_matches_header(const TableSchema& schema,
+                                    const std::vector<std::string>& header) {
+    for (const ColumnSchema& column : schema.columns) {
+        if (std::find(header.begin(), header.end(), column.name) == header.end()) {
+            throw std::runtime_error("CSV header is missing schema column: " + column.name);
         }
-        return parsed;
-    } catch (const std::exception&) {
-        throw std::runtime_error("Invalid " + field + " value on CSV line " +
-                                 std::to_string(line_number) + ": " + value);
     }
 }
 
 }  // namespace
 
-std::vector<TradeEvent> load_trade_events_csv(const std::string& path) {
+Table load_csv_table(const std::string& path, const CsvLoadOptions& options) {
     std::ifstream input(path);
     if (!input) {
         throw std::runtime_error("Unable to open CSV input: " + path);
@@ -69,14 +54,9 @@ std::vector<TradeEvent> load_trade_events_csv(const std::string& path) {
         throw std::runtime_error("CSV input is empty: " + path);
     }
 
-    const std::vector<std::string> header = split_csv_line(line);
-    const std::vector<std::string> expected = {"symbol", "timestamp", "price", "quantity"};
-    if (header != expected) {
-        throw std::runtime_error(
-            "CSV header must be: symbol,timestamp,price,quantity");
-    }
+    const std::vector<std::string> header = split_csv_line(line, options.delimiter);
 
-    std::vector<TradeEvent> events;
+    std::vector<std::vector<std::string>> raw_rows;
     std::size_t line_number = 1;
     while (std::getline(input, line)) {
         ++line_number;
@@ -84,26 +64,79 @@ std::vector<TradeEvent> load_trade_events_csv(const std::string& path) {
             continue;
         }
 
-        const std::vector<std::string> fields = split_csv_line(line);
-        if (fields.size() != expected.size()) {
+        const std::vector<std::string> fields = split_csv_line(line, options.delimiter);
+        if (fields.size() != header.size()) {
             throw std::runtime_error("CSV line " + std::to_string(line_number) +
-                                     " must contain 4 fields");
+                                     " has " + std::to_string(fields.size()) +
+                                     " fields, expected " + std::to_string(header.size()));
         }
-        if (fields[0].empty()) {
-            throw std::runtime_error("Missing symbol on CSV line " + std::to_string(line_number));
-        }
+        raw_rows.push_back(fields);
+    }
 
+    if (raw_rows.empty()) {
+        throw std::runtime_error("CSV input has no data rows: " + path);
+    }
+
+    Table table;
+    if (options.schema.has_value()) {
+        table.schema = *options.schema;
+        validate_schema_matches_header(table.schema, header);
+    } else if (options.infer_schema) {
+        table.schema = infer_table_schema(header, raw_rows);
+    } else {
+        throw std::runtime_error("CSV loading requires schema inference or an explicit schema");
+    }
+
+    std::vector<std::size_t> source_indexes;
+    source_indexes.reserve(table.schema.columns.size());
+    for (const ColumnSchema& column : table.schema.columns) {
+        const auto found = std::find(header.begin(), header.end(), column.name);
+        if (found == header.end()) {
+            throw std::runtime_error("CSV header is missing schema column: " + column.name);
+        }
+        source_indexes.push_back(static_cast<std::size_t>(std::distance(header.begin(), found)));
+    }
+
+    table.rows.reserve(raw_rows.size());
+    for (std::size_t row_index = 0; row_index < raw_rows.size(); ++row_index) {
+        std::vector<CellValue> row;
+        row.reserve(table.schema.columns.size());
+        for (std::size_t column = 0; column < table.schema.columns.size(); ++column) {
+            const ColumnSchema& column_schema = table.schema.columns[column];
+            row.push_back(parse_cell_value(raw_rows[row_index][source_indexes[column]],
+                                           column_schema.type,
+                                           column_schema.name,
+                                           row_index + 2));
+        }
+        table.rows.push_back(std::move(row));
+    }
+
+    return table;
+}
+
+std::vector<TradeEvent> load_trade_events_csv(const std::string& path) {
+    CsvLoadOptions options;
+    options.schema = TableSchema{{
+        {"symbol", ColumnType::String},
+        {"timestamp", ColumnType::Int64},
+        {"price", ColumnType::Double},
+        {"quantity", ColumnType::Int64},
+    }};
+    const Table table = load_csv_table(path, options);
+    const std::size_t symbol = column_index(table.schema, "symbol");
+    const std::size_t timestamp = column_index(table.schema, "timestamp");
+    const std::size_t price = column_index(table.schema, "price");
+    const std::size_t quantity = column_index(table.schema, "quantity");
+
+    std::vector<TradeEvent> events;
+    events.reserve(table.rows.size());
+    for (const std::vector<CellValue>& row : table.rows) {
         events.push_back(TradeEvent{
-            fields[0],
-            parse_number<int64_t>(fields[1], "timestamp", line_number),
-            parse_double(fields[2], "price", line_number),
-            parse_number<int>(fields[3], "quantity", line_number),
+            std::get<std::string>(row[symbol]),
+            std::get<int64_t>(row[timestamp]),
+            std::get<double>(row[price]),
+            static_cast<int>(std::get<int64_t>(row[quantity])),
         });
     }
-
-    if (events.empty()) {
-        throw std::runtime_error("CSV input has no trade rows: " + path);
-    }
-
     return events;
 }

@@ -11,6 +11,9 @@ struct RunOptions {
     std::string symbol = "AAPL";
     std::vector<std::string> where_clauses;
     std::vector<std::string> strategies;
+    std::string schema;
+    std::string delimiter = ",";
+    bool infer_schema = true;
     int warmup = 5;
     int runs = 30;
     std::uint32_t seed = 42;

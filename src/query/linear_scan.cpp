@@ -1,6 +1,7 @@
 #include "queryforge/query/linear_scan.hpp"
 
 #include "queryforge/benchmark/benchmark_stats.hpp"
+#include "queryforge/data/table.hpp"
 #include "queryforge/query/query_filter.hpp"
 
 #include <chrono>
@@ -9,9 +10,10 @@
 namespace {
 
 std::size_t count_matches(const std::vector<TradeEvent>& events, const QuerySpec& query) {
+    const Table table = trade_events_to_table(events);
     std::size_t matches = 0;
-    for (const TradeEvent& event : events) {
-        if (matches_query(event, query)) {
+    for (std::size_t row = 0; row < table.rows.size(); ++row) {
+        if (matches_query(table, row, query)) {
             ++matches;
         }
     }
@@ -49,5 +51,9 @@ ScanResult linear_scan_benchmark(const std::vector<TradeEvent>& events,
                                  const std::string& symbol,
                                  int runs,
                                  int warmup) {
-    return linear_scan_benchmark(events, parse_query_filters({"symbol=" + symbol}), runs, warmup);
+    const Table table = trade_events_to_table(events);
+    return linear_scan_benchmark(events,
+                                 parse_query_filters({"symbol=" + symbol}, table.schema),
+                                 runs,
+                                 warmup);
 }

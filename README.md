@@ -19,6 +19,18 @@ Run against the included CSV example:
 .\build\Debug\queryforge.exe run --input examples\trades.csv --where symbol=AAPL --strategy all --runs 30
 ```
 
+Run against an arbitrary CSV schema with inferred types:
+
+```powershell
+.\build\Debug\queryforge.exe run --input examples\users.csv --where country=US --where age>=30 --strategy all
+```
+
+Run with an explicit schema:
+
+```powershell
+.\build\Debug\queryforge.exe run --input examples\game_events.csv --schema event_id:int64,level:string,frame_time_ms:double,entity_count:int64 --where frame_time_ms>20 --strategy all
+```
+
 Run against generated data:
 
 ```powershell
@@ -40,11 +52,20 @@ Recommendation:
 
 ## Supported Workloads
 
-Current data model:
+CSV files can use any headered schema. QueryForge infers column types by default, or you can pass `--schema` with `name:type` entries.
+
+Trade-like data:
 
 ```csv
 symbol,timestamp,price,quantity
 AAPL,1600000000000000000,185.12,100
+```
+
+Non-trade data:
+
+```csv
+user_id,country,age,score,is_paid
+1,US,34,91.2,true
 ```
 
 Current query filters:
@@ -53,6 +74,9 @@ Current query filters:
 - `timestamp>=1600000000000000000`
 - `price<250`
 - `quantity>100`
+- `country=US`
+- `age>=30`
+- `is_paid=true`
 
 Current strategies:
 
@@ -79,6 +103,12 @@ Repeated-query model:
 
 ```powershell
 .\build\Debug\queryforge.exe run --rows 1000000 --where symbol=AAPL --strategy all --repeat-count 100
+```
+
+Custom delimiter:
+
+```powershell
+.\build\Debug\queryforge.exe run --input data.psv --delimiter "|" --where status=active
 ```
 
 ## Prerequisites

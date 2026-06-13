@@ -1,17 +1,11 @@
 #pragma once
 
 #include "queryforge/core/trade_event.hpp"
+#include "queryforge/data/table.hpp"
 
-#include <cstdint>
+#include <cstddef>
 #include <string>
 #include <vector>
-
-enum class QueryField {
-    Symbol,
-    Timestamp,
-    Price,
-    Quantity,
-};
 
 enum class QueryOperator {
     Equal,
@@ -22,20 +16,21 @@ enum class QueryOperator {
 };
 
 struct QueryFilter {
-    QueryField field;
+    std::string column;
+    std::size_t column_index;
+    ColumnType type;
     QueryOperator op;
     std::string value_text;
-    int64_t integer_value = 0;
-    double double_value = 0.0;
+    CellValue value;
 };
 
 struct QuerySpec {
     std::vector<QueryFilter> filters;
 };
 
-QuerySpec parse_query_filters(const std::vector<std::string>& clauses);
+QuerySpec parse_query_filters(const std::vector<std::string>& clauses, const TableSchema& schema);
+bool matches_query(const Table& table, std::size_t row_index, const QuerySpec& query);
 bool matches_query(const TradeEvent& event, const QuerySpec& query);
 std::string describe_query(const QuerySpec& query);
-bool find_symbol_equality(const QuerySpec& query, std::string& symbol);
-bool has_range_filter(const QuerySpec& query, QueryField field);
-std::string field_name(QueryField field);
+bool find_equality_filter(const QuerySpec& query, QueryFilter& filter);
+bool find_range_filter(const QuerySpec& query, QueryFilter& filter);

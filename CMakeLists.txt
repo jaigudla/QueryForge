@@ -28,8 +28,10 @@ FetchContent_MakeAvailable(CLI11 Catch2)
 
 add_library(queryforge_lib
   src/benchmark/benchmark_stats.cpp
+  src/data/csv_schema.cpp
   src/data/data_loader.cpp
   src/data/dataset_generator.cpp
+  src/data/table.cpp
   src/query/query_filter.cpp
   src/query/linear_scan.cpp
   src/query/strategy.cpp
@@ -47,6 +49,7 @@ target_link_libraries(queryforge PRIVATE queryforge_lib CLI11::CLI11)
 add_executable(queryforge_tests
   tests/smoke_test.cpp
   tests/benchmark/benchmark_stats_test.cpp
+  tests/data/csv_schema_test.cpp
   tests/data/data_loader_test.cpp
   tests/data/dataset_generator_test.cpp
   tests/query/query_filter_test.cpp
@@ -62,7 +65,17 @@ add_test(NAME cli_help COMMAND queryforge --help)
 add_test(NAME cli_sample_synthetic
   COMMAND queryforge run --rows 1000 --where symbol=AAPL --strategy all --runs 1 --warmup 0
 )
+add_test(NAME cli_users_schema_example
+  COMMAND queryforge run --input ${CMAKE_SOURCE_DIR}/examples/users.csv --where country=US --where age>=30 --strategy all --runs 1 --warmup 0
+)
+add_test(NAME cli_game_events_explicit_schema
+  COMMAND queryforge run --input ${CMAKE_SOURCE_DIR}/examples/game_events.csv --schema event_id:int64,level:string,frame_time_ms:double,entity_count:int64 --where frame_time_ms>20 --strategy all --runs 1 --warmup 0
+)
 add_test(NAME cli_invalid_runs
   COMMAND queryforge run --rows 1000 --where symbol=AAPL --runs 0
 )
+add_test(NAME cli_invalid_schema
+  COMMAND queryforge run --input ${CMAKE_SOURCE_DIR}/examples/users.csv --schema user_id:uuid --where country=US
+)
 set_tests_properties(cli_invalid_runs PROPERTIES WILL_FAIL TRUE)
+set_tests_properties(cli_invalid_schema PROPERTIES WILL_FAIL TRUE)

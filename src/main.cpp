@@ -21,6 +21,11 @@ int main(int argc, char** argv) {
     run->add_option("--symbol", run_options.symbol, "Shortcut for --where symbol=<value>");
     run->add_option("--where", run_options.where_clauses, "Query filter, e.g. symbol=AAPL or price<250");
     run->add_option("--strategy", run_options.strategies, "Strategy: all, linear_scan, hash_index, sorted_index");
+    run->add_option("--schema", run_options.schema, "CSV schema, e.g. user_id:int64,country:string");
+    run->add_option("--delimiter", run_options.delimiter, "Single-character CSV delimiter");
+    run->add_flag("--infer-schema,!--no-infer-schema",
+                  run_options.infer_schema,
+                  "Infer CSV column types when --schema is not provided");
     run->add_option("--warmup", run_options.warmup)
         ->check(CLI::Range(0, std::numeric_limits<int>::max()));
     run->add_option("--runs", run_options.runs)->check(CLI::Range(1, std::numeric_limits<int>::max()));

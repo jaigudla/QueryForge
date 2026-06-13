@@ -1,7 +1,8 @@
 #include "queryforge/query/query_filter.hpp"
 
+#include "queryforge/data/csv_schema.hpp"
+
 #include <algorithm>
-#include <charconv>
 #include <sstream>
 #include <stdexcept>
 #include <string_view>
@@ -15,22 +16,6 @@ std::string trim(std::string_view value) {
     }
     const auto end = value.find_last_not_of(" \t\r\n");
     return std::string{value.substr(start, end - start + 1)};
-}
-
-QueryField parse_field(const std::string& value) {
-    if (value == "symbol") {
-        return QueryField::Symbol;
-    }
-    if (value == "timestamp") {
-        return QueryField::Timestamp;
-    }
-    if (value == "price") {
-        return QueryField::Price;
-    }
-    if (value == "quantity") {
-        return QueryField::Quantity;
-    }
-    throw std::runtime_error("Unknown query field: " + value);
 }
 
 std::string operator_text(QueryOperator op) {
@@ -49,32 +34,7 @@ std::string operator_text(QueryOperator op) {
     return "?";
 }
 
-template <typename T>
-T parse_integer(const std::string& value, const std::string& field) {
-    T parsed{};
-    const char* begin = value.data();
-    const char* end = value.data() + value.size();
-    const auto result = std::from_chars(begin, end, parsed);
-    if (result.ec != std::errc{} || result.ptr != end) {
-        throw std::runtime_error("Invalid numeric value for " + field + ": " + value);
-    }
-    return parsed;
-}
-
-double parse_double(const std::string& value, const std::string& field) {
-    try {
-        std::size_t parsed_chars = 0;
-        const double parsed = std::stod(value, &parsed_chars);
-        if (parsed_chars != value.size()) {
-            throw std::invalid_argument("trailing characters");
-        }
-        return parsed;
-    } catch (const std::exception&) {
-        throw std::runtime_error("Invalid numeric value for " + field + ": " + value);
-    }
-}
-
-bool compare_integer(int64_t lhs, QueryOperator op, int64_t rhs) {
+bool compare_number(double lhs, QueryOperator op, double rhs) {
     switch (op) {
         case QueryOperator::Equal:
             return lhs == rhs;
@@ -90,7 +50,7 @@ bool compare_integer(int64_t lhs, QueryOperator op, int64_t rhs) {
     return false;
 }
 
-bool compare_double(double lhs, QueryOperator op, double rhs) {
+bool compare_string(const std::string& lhs, QueryOperator op, const std::string& rhs) {
     switch (op) {
         case QueryOperator::Equal:
             return lhs == rhs;
@@ -102,27 +62,36 @@ bool compare_double(double lhs, QueryOperator op, double rhs) {
             return lhs > rhs;
         case QueryOperator::GreaterEqual:
             return lhs >= rhs;
+    }
+    return false;
+}
+
+bool compare_bool(bool lhs, QueryOperator op, bool rhs) {
+    if (op != QueryOperator::Equal) {
+        throw std::runtime_error("bool columns only support equality filters");
+    }
+    return lhs == rhs;
+}
+
+bool compare_cell(const CellValue& lhs, QueryOperator op, const CellValue& rhs) {
+    if (const auto* left = std::get_if<std::string>(&lhs)) {
+        return compare_string(*left, op, std::get<std::string>(rhs));
+    }
+    if (const auto* left = std::get_if<int64_t>(&lhs)) {
+        return compare_number(static_cast<double>(*left), op, static_cast<double>(std::get<int64_t>(rhs)));
+    }
+    if (const auto* left = std::get_if<double>(&lhs)) {
+        return compare_number(*left, op, std::get<double>(rhs));
+    }
+    if (const auto* left = std::get_if<bool>(&lhs)) {
+        return compare_bool(*left, op, std::get<bool>(rhs));
     }
     return false;
 }
 
 }  // namespace
 
-std::string field_name(QueryField field) {
-    switch (field) {
-        case QueryField::Symbol:
-            return "symbol";
-        case QueryField::Timestamp:
-            return "timestamp";
-        case QueryField::Price:
-            return "price";
-        case QueryField::Quantity:
-            return "quantity";
-    }
-    return "unknown";
-}
-
-QuerySpec parse_query_filters(const std::vector<std::string>& clauses) {
+QuerySpec parse_query_filters(const std::vector<std::string>& clauses, const TableSchema& schema) {
     QuerySpec query;
     for (const std::string& raw_clause : clauses) {
         const std::string clause = trim(raw_clause);
@@ -163,18 +132,20 @@ QuerySpec parse_query_filters(const std::vector<std::string>& clauses) {
             throw std::runtime_error("Malformed query filter: " + clause);
         }
 
-        const QueryField field = parse_field(field_text);
-        if (field == QueryField::Symbol && op != QueryOperator::Equal) {
-            throw std::runtime_error("symbol only supports equality filters");
+        const std::size_t index = column_index(schema, field_text);
+        const ColumnType type = schema.columns[index].type;
+        if (type == ColumnType::Bool && op != QueryOperator::Equal) {
+            throw std::runtime_error("bool column '" + field_text + "' only supports equality filters");
         }
 
-        QueryFilter filter{field, op, value_text};
-        if (field == QueryField::Timestamp || field == QueryField::Quantity) {
-            filter.integer_value = parse_integer<int64_t>(value_text, field_text);
-        } else if (field == QueryField::Price) {
-            filter.double_value = parse_double(value_text, field_text);
-        }
-
+        QueryFilter filter{
+            field_text,
+            index,
+            type,
+            op,
+            value_text,
+            parse_cell_value(value_text, type, field_text, 0),
+        };
         query.filters.push_back(filter);
     }
 
@@ -185,20 +156,16 @@ QuerySpec parse_query_filters(const std::vector<std::string>& clauses) {
     return query;
 }
 
-bool matches_query(const TradeEvent& event, const QuerySpec& query) {
+bool matches_query(const Table& table, std::size_t row_index, const QuerySpec& query) {
+    const std::vector<CellValue>& row = table.rows.at(row_index);
     return std::all_of(query.filters.begin(), query.filters.end(), [&](const QueryFilter& filter) {
-        switch (filter.field) {
-            case QueryField::Symbol:
-                return event.symbol == filter.value_text;
-            case QueryField::Timestamp:
-                return compare_integer(event.timestamp, filter.op, filter.integer_value);
-            case QueryField::Price:
-                return compare_double(event.price, filter.op, filter.double_value);
-            case QueryField::Quantity:
-                return compare_integer(event.quantity, filter.op, filter.integer_value);
-        }
-        return false;
+        return compare_cell(row.at(filter.column_index), filter.op, filter.value);
     });
+}
+
+bool matches_query(const TradeEvent& event, const QuerySpec& query) {
+    const Table table = trade_events_to_table({event});
+    return matches_query(table, 0, query);
 }
 
 std::string describe_query(const QuerySpec& query) {
@@ -208,29 +175,27 @@ std::string describe_query(const QuerySpec& query) {
         if (i > 0) {
             output << " AND ";
         }
-        output << field_name(filter.field) << ' ' << operator_text(filter.op) << ' ';
-        if (filter.field == QueryField::Symbol) {
-            output << '"' << filter.value_text << '"';
-        } else {
-            output << filter.value_text;
-        }
+        output << filter.column << ' ' << operator_text(filter.op) << ' ';
+        output << (filter.type == ColumnType::String ? "\"" + filter.value_text + "\"" : filter.value_text);
     }
     return output.str();
 }
 
-bool find_symbol_equality(const QuerySpec& query, std::string& symbol) {
-    for (const QueryFilter& filter : query.filters) {
-        if (filter.field == QueryField::Symbol && filter.op == QueryOperator::Equal) {
-            symbol = filter.value_text;
+bool find_equality_filter(const QuerySpec& query, QueryFilter& filter) {
+    for (const QueryFilter& candidate : query.filters) {
+        if (candidate.op == QueryOperator::Equal) {
+            filter = candidate;
             return true;
         }
     }
     return false;
 }
 
-bool has_range_filter(const QuerySpec& query, QueryField field) {
-    for (const QueryFilter& filter : query.filters) {
-        if (filter.field == field && filter.op != QueryOperator::Equal) {
+bool find_range_filter(const QuerySpec& query, QueryFilter& filter) {
+    for (const QueryFilter& candidate : query.filters) {
+        if ((candidate.type == ColumnType::Int64 || candidate.type == ColumnType::Double) &&
+            candidate.op != QueryOperator::Equal) {
+            filter = candidate;
             return true;
         }
     }

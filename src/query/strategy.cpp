@@ -1,11 +1,10 @@
 #include "queryforge/query/strategy.hpp"
 
-#include "queryforge/query/linear_scan.hpp"
-
 #include <algorithm>
 #include <chrono>
 #include <functional>
 #include <stdexcept>
+#include <type_traits>
 #include <unordered_map>
 
 namespace {
@@ -35,25 +34,42 @@ BenchmarkStats benchmark_query(int runs, int warmup, const QueryFn& query_fn) {
     return compute_benchmark_stats(samples);
 }
 
-std::size_t count_linear(const std::vector<TradeEvent>& events, const QuerySpec& query) {
+std::string key_for_cell(const CellValue& value) {
+    return std::visit(
+        [](const auto& current) -> std::string {
+            using T = std::decay_t<decltype(current)>;
+            if constexpr (std::is_same_v<T, std::string>) {
+                return "s:" + current;
+            } else if constexpr (std::is_same_v<T, bool>) {
+                return current ? "b:true" : "b:false";
+            } else if constexpr (std::is_same_v<T, int64_t>) {
+                return "i:" + std::to_string(current);
+            } else {
+                return "d:" + std::to_string(current);
+            }
+        },
+        value);
+}
+
+std::size_t count_linear(const Table& table, const QuerySpec& query) {
     std::size_t matches = 0;
-    for (const TradeEvent& event : events) {
-        if (matches_query(event, query)) {
+    for (std::size_t row = 0; row < table.rows.size(); ++row) {
+        if (matches_query(table, row, query)) {
             ++matches;
         }
     }
     return matches;
 }
 
-StrategyBenchmarkResult benchmark_linear_scan(const std::vector<TradeEvent>& events,
+StrategyBenchmarkResult benchmark_linear_scan(const Table& table,
                                               const QuerySpec& query,
                                               int runs,
                                               int warmup) {
-    const std::size_t matches = count_linear(events, query);
+    const std::size_t matches = count_linear(table, query);
     return StrategyBenchmarkResult{
         "linear_scan",
         0.0,
-        benchmark_query(runs, warmup, [&] { return count_linear(events, query); }),
+        benchmark_query(runs, warmup, [&] { return count_linear(table, query); }),
         matches,
         0,
         true,
@@ -61,12 +77,12 @@ StrategyBenchmarkResult benchmark_linear_scan(const std::vector<TradeEvent>& eve
     };
 }
 
-StrategyBenchmarkResult benchmark_hash_index(const std::vector<TradeEvent>& events,
+StrategyBenchmarkResult benchmark_hash_index(const Table& table,
                                              const QuerySpec& query,
                                              int runs,
                                              int warmup) {
-    std::string symbol;
-    if (!find_symbol_equality(query, symbol)) {
+    QueryFilter equality_filter{};
+    if (!find_equality_filter(query, equality_filter)) {
         return StrategyBenchmarkResult{
             "hash_index",
             0.0,
@@ -74,25 +90,26 @@ StrategyBenchmarkResult benchmark_hash_index(const std::vector<TradeEvent>& even
             0,
             0,
             false,
-            "requires symbol equality filter",
+            "requires an equality filter",
         };
     }
 
     const auto build_start = std::chrono::steady_clock::now();
     std::unordered_map<std::string, std::vector<std::size_t>> index;
-    for (std::size_t i = 0; i < events.size(); ++i) {
-        index[events[i].symbol].push_back(i);
+    for (std::size_t i = 0; i < table.rows.size(); ++i) {
+        index[key_for_cell(table.rows[i][equality_filter.column_index])].push_back(i);
     }
     const auto build_end = std::chrono::steady_clock::now();
 
+    const std::string lookup_key = key_for_cell(equality_filter.value);
     const auto query_fn = [&] {
         std::size_t matches = 0;
-        const auto found = index.find(symbol);
+        const auto found = index.find(lookup_key);
         if (found == index.end()) {
             return matches;
         }
         for (const std::size_t row : found->second) {
-            if (matches_query(events[row], query)) {
+            if (matches_query(table, row, query)) {
                 ++matches;
             }
         }
@@ -115,36 +132,12 @@ StrategyBenchmarkResult benchmark_hash_index(const std::vector<TradeEvent>& even
     };
 }
 
-double numeric_value(const TradeEvent& event, QueryField field) {
-    switch (field) {
-        case QueryField::Timestamp:
-            return static_cast<double>(event.timestamp);
-        case QueryField::Price:
-            return event.price;
-        case QueryField::Quantity:
-            return static_cast<double>(event.quantity);
-        case QueryField::Symbol:
-            return 0.0;
-    }
-    return 0.0;
-}
-
-bool find_sorted_field(const QuerySpec& query, QueryField& field) {
-    for (const QueryField candidate : {QueryField::Timestamp, QueryField::Price, QueryField::Quantity}) {
-        if (has_range_filter(query, candidate)) {
-            field = candidate;
-            return true;
-        }
-    }
-    return false;
-}
-
-StrategyBenchmarkResult benchmark_sorted_index(const std::vector<TradeEvent>& events,
+StrategyBenchmarkResult benchmark_sorted_index(const Table& table,
                                                const QuerySpec& query,
                                                int runs,
                                                int warmup) {
-    QueryField field = QueryField::Timestamp;
-    if (!find_sorted_field(query, field)) {
+    QueryFilter range_filter{};
+    if (!find_range_filter(query, range_filter)) {
         return StrategyBenchmarkResult{
             "sorted_index",
             0.0,
@@ -157,19 +150,20 @@ StrategyBenchmarkResult benchmark_sorted_index(const std::vector<TradeEvent>& ev
     }
 
     const auto build_start = std::chrono::steady_clock::now();
-    std::vector<std::size_t> sorted_rows(events.size());
-    for (std::size_t i = 0; i < events.size(); ++i) {
+    std::vector<std::size_t> sorted_rows(table.rows.size());
+    for (std::size_t i = 0; i < table.rows.size(); ++i) {
         sorted_rows[i] = i;
     }
     std::sort(sorted_rows.begin(), sorted_rows.end(), [&](std::size_t lhs, std::size_t rhs) {
-        return numeric_value(events[lhs], field) < numeric_value(events[rhs], field);
+        return cell_to_number(table.rows[lhs][range_filter.column_index]) <
+               cell_to_number(table.rows[rhs][range_filter.column_index]);
     });
     const auto build_end = std::chrono::steady_clock::now();
 
     const auto query_fn = [&] {
         std::size_t matches = 0;
         for (const std::size_t row : sorted_rows) {
-            if (matches_query(events[row], query)) {
+            if (matches_query(table, row, query)) {
                 ++matches;
             }
         }
@@ -183,7 +177,7 @@ StrategyBenchmarkResult benchmark_sorted_index(const std::vector<TradeEvent>& ev
         query_fn(),
         sorted_rows.capacity() * sizeof(std::size_t),
         true,
-        "sorted by " + field_name(field),
+        "sorted by " + range_filter.column,
     };
 }
 
@@ -203,7 +197,7 @@ std::vector<std::string> normalize_strategy_names(const std::vector<std::string>
     return requested;
 }
 
-std::vector<StrategyBenchmarkResult> benchmark_strategies(const std::vector<TradeEvent>& events,
+std::vector<StrategyBenchmarkResult> benchmark_strategies(const Table& table,
                                                           const QuerySpec& query,
                                                           const std::vector<std::string>& strategies,
                                                           int runs,
@@ -211,11 +205,11 @@ std::vector<StrategyBenchmarkResult> benchmark_strategies(const std::vector<Trad
     std::vector<StrategyBenchmarkResult> results;
     for (const std::string& strategy : normalize_strategy_names(strategies)) {
         if (strategy == "linear_scan") {
-            results.push_back(benchmark_linear_scan(events, query, runs, warmup));
+            results.push_back(benchmark_linear_scan(table, query, runs, warmup));
         } else if (strategy == "hash_index") {
-            results.push_back(benchmark_hash_index(events, query, runs, warmup));
+            results.push_back(benchmark_hash_index(table, query, runs, warmup));
         } else if (strategy == "sorted_index") {
-            results.push_back(benchmark_sorted_index(events, query, runs, warmup));
+            results.push_back(benchmark_sorted_index(table, query, runs, warmup));
         }
     }
     return results;

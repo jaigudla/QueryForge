@@ -1,7 +1,7 @@
 #pragma once
 
 #include "queryforge/benchmark/benchmark_stats.hpp"
-#include "queryforge/core/trade_event.hpp"
+#include "queryforge/data/table.hpp"
 #include "queryforge/query/query_filter.hpp"
 
 #include <cstddef>
@@ -19,7 +19,7 @@ struct StrategyBenchmarkResult {
 };
 
 std::vector<std::string> normalize_strategy_names(const std::vector<std::string>& requested);
-std::vector<StrategyBenchmarkResult> benchmark_strategies(const std::vector<TradeEvent>& events,
+std::vector<StrategyBenchmarkResult> benchmark_strategies(const Table& table,
                                                           const QuerySpec& query,
                                                           const std::vector<std::string>& strategies,
                                                           int runs,
