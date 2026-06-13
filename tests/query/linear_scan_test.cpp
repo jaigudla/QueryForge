@@ -13,6 +13,7 @@ TEST_CASE("linear_scan counts matching symbols", "[linear_scan]") {
 
     const ScanResult result = linear_scan_benchmark(events, "AAPL", 1, 0);
     REQUIRE(result.matches == 3);
+    REQUIRE(result.stats.latencies_ms.size() == 1);
 }
 
 TEST_CASE("linear_scan reports positive latency", "[linear_scan]") {
@@ -22,5 +23,8 @@ TEST_CASE("linear_scan reports positive latency", "[linear_scan]") {
     };
 
     const ScanResult result = linear_scan_benchmark(events, "AAPL", 5, 1);
-    REQUIRE(result.p50_ms > 0.0);
+    REQUIRE(result.stats.latencies_ms.size() == 5);
+    REQUIRE(result.stats.p50_ms > 0.0);
+    REQUIRE(result.stats.min_ms <= result.stats.p50_ms);
+    REQUIRE(result.stats.p50_ms <= result.stats.max_ms);
 }

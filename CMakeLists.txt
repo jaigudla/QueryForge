@@ -27,6 +27,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(CLI11 Catch2)
 
 add_library(queryforge_lib
+  src/benchmark/benchmark_stats.cpp
   src/data/dataset_generator.cpp
   src/query/linear_scan.cpp
   src/util/format.cpp
@@ -40,6 +41,7 @@ target_link_libraries(queryforge PRIVATE queryforge_lib CLI11::CLI11)
 
 add_executable(queryforge_tests
   tests/smoke_test.cpp
+  tests/benchmark/benchmark_stats_test.cpp
   tests/data/dataset_generator_test.cpp
   tests/query/linear_scan_test.cpp
 )

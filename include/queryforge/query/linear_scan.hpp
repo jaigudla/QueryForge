@@ -1,5 +1,6 @@
 #pragma once
 
+#include "queryforge/benchmark/benchmark_stats.hpp"
 #include "queryforge/core/trade_event.hpp"
 
 #include <string>
@@ -7,10 +8,10 @@
 
 struct ScanResult {
     std::size_t matches;
-    double p50_ms;
+    BenchmarkStats stats;
 };
 
 ScanResult linear_scan_benchmark(const std::vector<TradeEvent>& events,
                                  const std::string& symbol,
-                                 int iterations = 21,
-                                 int warmup = 3);
+                                 int runs = 30,
+                                 int warmup = 5);

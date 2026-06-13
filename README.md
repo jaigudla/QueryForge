@@ -26,10 +26,10 @@ cmake -S . -B build -G "Visual Studio 17 2022"
 
 ```powershell
 .\build\queryforge.exe --help
-.\build\Debug\queryforge.exe run --rows 1000000 --symbol AAPL
+.\build\Debug\queryforge.exe run --rows 1000000 --symbol AAPL --warmup 5 --runs 30
 ```
 
-The `run` command generates a synthetic trade dataset and benchmarks a linear scan for the requested symbol.
+The `run` command generates a synthetic trade dataset and benchmarks a linear scan for the requested symbol. Use `--seed` to make the generated dataset reproducible.
 
 ## Tests
 

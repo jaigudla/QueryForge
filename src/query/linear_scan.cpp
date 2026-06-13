@@ -1,6 +1,7 @@
 #include "queryforge/query/linear_scan.hpp"
 
-#include <algorithm>
+#include "queryforge/benchmark/benchmark_stats.hpp"
+
 #include <chrono>
 #include <vector>
 
@@ -16,27 +17,18 @@ std::size_t count_matches(const std::vector<TradeEvent>& events, const std::stri
     return matches;
 }
 
-double median(std::vector<double> values) {
-    std::sort(values.begin(), values.end());
-    const std::size_t mid = values.size() / 2;
-    if (values.size() % 2 == 0) {
-        return (values[mid - 1] + values[mid]) / 2.0;
-    }
-    return values[mid];
-}
-
 }  // namespace
 
 ScanResult linear_scan_benchmark(const std::vector<TradeEvent>& events,
                                  const std::string& symbol,
-                                 int iterations,
+                                 int runs,
                                  int warmup) {
     const std::size_t matches = count_matches(events, symbol);
 
     std::vector<double> samples;
-    samples.reserve(static_cast<std::size_t>(iterations));
+    samples.reserve(static_cast<std::size_t>(runs));
 
-    for (int i = 0; i < warmup + iterations; ++i) {
+    for (int i = 0; i < warmup + runs; ++i) {
         const auto start = std::chrono::steady_clock::now();
         count_matches(events, symbol);
         const auto end = std::chrono::steady_clock::now();
@@ -48,5 +40,5 @@ ScanResult linear_scan_benchmark(const std::vector<TradeEvent>& events,
         }
     }
 
-    return ScanResult{matches, median(samples)};
+    return ScanResult{matches, compute_benchmark_stats(samples)};
 }
