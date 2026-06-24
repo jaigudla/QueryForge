@@ -6,6 +6,8 @@
 #include <iostream>
 #include <string>
 
+namespace queryforge {
+
 std::string format_with_commas(std::uint64_t value) {
     const std::string digits = std::to_string(value);
     const int first_group = static_cast<int>(digits.size() % 3);
@@ -52,14 +54,13 @@ void print_benchmark_table(const std::string& strategy,
                            std::size_t matches) {
     constexpr int strategy_width = 14;
     constexpr int metric_width = 10;
-    constexpr int matches_width = 0;
 
     std::cout << std::left << std::setw(strategy_width) << "Strategy"
               << std::setw(metric_width) << "p50"
               << std::setw(metric_width) << "p95"
               << std::setw(metric_width) << "p99"
               << std::setw(metric_width) << "avg"
-              << std::setw(matches_width) << "matches" << '\n';
+              << "matches" << '\n';
     std::cout << "---------------------------------------------------------------\n";
     std::cout << std::left << std::setw(strategy_width) << strategy
               << std::setw(metric_width) << format_ms(stats.p50_ms)
@@ -80,9 +81,10 @@ void print_strategy_table(const std::vector<StrategyBenchmarkResult>& results) {
               << std::setw(metric_width) << "p95"
               << std::setw(metric_width) << "p99"
               << std::setw(metric_width) << "avg"
+              << std::setw(metric_width) << "stddev"
               << std::setw(memory_width) << "memory"
               << "matches" << '\n';
-    std::cout << "-----------------------------------------------------------------------------------\n";
+    std::cout << "-----------------------------------------------------------------------------------------------\n";
 
     for (const StrategyBenchmarkResult& result : results) {
         if (!result.applicable) {
@@ -97,7 +99,10 @@ void print_strategy_table(const std::vector<StrategyBenchmarkResult>& results) {
                   << std::setw(metric_width) << format_ms(result.stats.p95_ms)
                   << std::setw(metric_width) << format_ms(result.stats.p99_ms)
                   << std::setw(metric_width) << format_ms(result.stats.avg_ms)
+                  << std::setw(metric_width) << format_ms(result.stats.stddev_ms)
                   << std::setw(memory_width) << format_bytes(result.memory_bytes)
                   << format_with_commas(static_cast<std::uint64_t>(result.matches)) << '\n';
     }
 }
+
+}  // namespace queryforge

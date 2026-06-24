@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+namespace queryforge {
+
 struct ScanResult {
     std::size_t matches;
     BenchmarkStats stats;
@@ -21,3 +23,5 @@ ScanResult linear_scan_benchmark(const std::vector<TradeEvent>& events,
                                  const std::string& symbol,
                                  int runs = 30,
                                  int warmup = 5);
+
+}  // namespace queryforge

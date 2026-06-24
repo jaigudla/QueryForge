@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+namespace queryforge {
+
 enum class QueryOperator {
     Equal,
     Less,
@@ -33,4 +35,8 @@ bool matches_query(const Table& table, std::size_t row_index, const QuerySpec& q
 bool matches_query(const TradeEvent& event, const QuerySpec& query);
 std::string describe_query(const QuerySpec& query);
 bool find_equality_filter(const QuerySpec& query, QueryFilter& filter);
+bool find_all_equality_filters(const QuerySpec& query, std::vector<QueryFilter>& filters);
 bool find_range_filter(const QuerySpec& query, QueryFilter& filter);
+bool find_best_range_filter(const QuerySpec& query, QueryFilter& filter);
+
+}  // namespace queryforge

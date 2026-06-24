@@ -4,6 +4,8 @@
 
 #include <stdexcept>
 
+using namespace queryforge;
+
 TEST_CASE("parse_query_filters handles symbol equality", "[query_filter]") {
     const Table table{
         TableSchema{{{"symbol", ColumnType::String}}},

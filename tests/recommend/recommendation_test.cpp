@@ -2,10 +2,12 @@
 
 #include "queryforge/recommend/recommendation.hpp"
 
+using namespace queryforge;
+
 namespace {
 
 BenchmarkStats stats(double avg_ms) {
-    return BenchmarkStats{{avg_ms}, avg_ms, avg_ms, avg_ms, avg_ms, avg_ms, avg_ms};
+    return BenchmarkStats{{avg_ms}, avg_ms, avg_ms, avg_ms, avg_ms, 0.0, avg_ms, avg_ms};
 }
 
 }  // namespace

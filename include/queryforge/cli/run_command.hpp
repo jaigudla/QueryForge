@@ -1,9 +1,13 @@
 #pragma once
 
+#include "queryforge/core/result.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
+
+namespace queryforge {
 
 struct RunOptions {
     std::size_t rows = 1'000'000;
@@ -12,6 +16,8 @@ struct RunOptions {
     std::vector<std::string> where_clauses;
     std::vector<std::string> strategies;
     std::string schema;
+    std::string schema_file;
+    std::string workload_path;
     std::string delimiter = ",";
     bool infer_schema = true;
     int warmup = 5;
@@ -19,6 +25,9 @@ struct RunOptions {
     std::uint32_t seed = 42;
     std::size_t repeat_count = 1;
     std::string output = "text";
+    bool memory_profile = false;
 };
 
-void execute_run(const RunOptions& options);
+Result<void> execute_run(const RunOptions& options);
+
+}  // namespace queryforge

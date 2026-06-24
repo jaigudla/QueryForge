@@ -1,0 +1,6 @@
+repeat_count: 10000
+queries:
+  - where: [symbol=AAPL]
+    weight: 0.7
+  - where: [price>200]
+    weight: 0.3

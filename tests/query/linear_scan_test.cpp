@@ -2,6 +2,8 @@
 
 #include "queryforge/query/linear_scan.hpp"
 
+using namespace queryforge;
+
 TEST_CASE("linear_scan counts matching symbols", "[linear_scan]") {
     const std::vector<TradeEvent> events = {
         {"AAPL", 1, 100.0, 10},

@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <string>
 
+namespace queryforge {
+
 struct BenchmarkMetadata {
     int warmup = 0;
     int runs = 0;
@@ -12,9 +14,12 @@ struct BenchmarkMetadata {
     std::string os;
     std::string compiler;
     std::string build_type;
+    std::string clock_source = "steady_clock";
 };
 
 BenchmarkMetadata collect_benchmark_metadata(int warmup,
                                              int runs,
                                              std::uint32_t seed,
                                              std::size_t repeat_count);
+
+}  // namespace queryforge

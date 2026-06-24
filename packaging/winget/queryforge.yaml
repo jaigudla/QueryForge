@@ -1,0 +1,13 @@
+PackageIdentifier: QueryForge.QueryForge
+PackageVersion: 1.0.0
+PackageName: QueryForge
+Publisher: QueryForge
+License: MIT
+ShortDescription: Benchmark in-memory query strategies for C++ developers
+Installers:
+  - Architecture: x64
+    InstallerType: zip
+    InstallerUrl: https://github.com/your-org/QueryForge/releases/download/v1.0.0/queryforge-windows.zip
+    InstallerSha256: REPLACE_WITH_RELEASE_SHA256
+Commands:
+  - queryforge

@@ -8,6 +8,8 @@
 #include <string>
 #include <vector>
 
+namespace queryforge {
+
 struct StrategyBenchmarkResult {
     std::string strategy;
     double build_time_ms = 0.0;
@@ -24,3 +26,5 @@ std::vector<StrategyBenchmarkResult> benchmark_strategies(const Table& table,
                                                           const std::vector<std::string>& strategies,
                                                           int runs,
                                                           int warmup);
+
+}  // namespace queryforge

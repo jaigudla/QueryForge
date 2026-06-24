@@ -3,11 +3,14 @@
 #include <algorithm>
 #include <charconv>
 #include <cctype>
+#include <fstream>
 #include <set>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 
+namespace queryforge {
 namespace {
 
 std::string trim(std::string_view value) {
@@ -77,6 +80,92 @@ void validate_unique_columns(const TableSchema& schema) {
     }
 }
 
+std::string extract_json_string(const std::string& json, std::size_t& pos) {
+    const std::size_t start = json.find('"', pos);
+    if (start == std::string::npos) {
+        throw std::runtime_error("Malformed schema JSON: expected string");
+    }
+    std::ostringstream value;
+    for (std::size_t i = start + 1; i < json.size(); ++i) {
+        if (json[i] == '\\' && i + 1 < json.size()) {
+            value << json[++i];
+            continue;
+        }
+        if (json[i] == '"') {
+            pos = i + 1;
+            return value.str();
+        }
+        value << json[i];
+    }
+    throw std::runtime_error("Malformed schema JSON: unterminated string");
+}
+
+TableSchema parse_json_schema(const std::string& json) {
+    TableSchema schema;
+    const std::string columns_key = "\"columns\"";
+    const std::size_t columns_pos = json.find(columns_key);
+    if (columns_pos == std::string::npos) {
+        throw std::runtime_error("Schema JSON must contain a columns array");
+    }
+
+    std::size_t pos = json.find('[', columns_pos);
+    if (pos == std::string::npos) {
+        throw std::runtime_error("Schema JSON must contain a columns array");
+    }
+    ++pos;
+
+    while (pos < json.size()) {
+        pos = json.find('{', pos);
+        if (pos == std::string::npos) {
+            break;
+        }
+        ++pos;
+
+        std::string name;
+        std::string type;
+        while (pos < json.size() && json[pos] != '}') {
+            if (json[pos] == '"') {
+                const std::string key = extract_json_string(json, pos);
+                pos = json.find(':', pos);
+                if (pos == std::string::npos) {
+                    break;
+                }
+                ++pos;
+                while (pos < json.size() && std::isspace(static_cast<unsigned char>(json[pos]))) {
+                    ++pos;
+                }
+                if (json[pos] != '"') {
+                    throw std::runtime_error("Schema JSON column values must be strings");
+                }
+                const std::string value = extract_json_string(json, pos);
+                if (key == "name") {
+                    name = value;
+                } else if (key == "type") {
+                    type = value;
+                }
+            } else {
+                ++pos;
+            }
+        }
+
+        if (!name.empty() && !type.empty()) {
+            schema.columns.push_back(ColumnSchema{name, parse_column_type(type)});
+        }
+        pos = json.find('}', pos);
+        if (pos == std::string::npos) {
+            break;
+        }
+        ++pos;
+    }
+
+    if (schema.columns.empty()) {
+        throw std::runtime_error("Schema JSON must contain at least one column");
+    }
+
+    validate_unique_columns(schema);
+    return schema;
+}
+
 }  // namespace
 
 TableSchema parse_table_schema(std::string_view schema_text) {
@@ -105,6 +194,48 @@ TableSchema parse_table_schema(std::string_view schema_text) {
 
     validate_unique_columns(schema);
     return schema;
+}
+
+TableSchema parse_schema_file(const std::string& path) {
+    std::ifstream input(path);
+    if (!input) {
+        throw std::runtime_error("Unable to open schema file: " + path);
+    }
+
+    std::ostringstream contents;
+    contents << input.rdbuf();
+    const std::string text = contents.str();
+    const std::string trimmed = trim(text);
+    if (trimmed.empty()) {
+        throw std::runtime_error("Schema file is empty: " + path);
+    }
+
+    if (trimmed.front() == '{') {
+        return parse_json_schema(trimmed);
+    }
+
+    std::vector<std::string> lines;
+    std::istringstream stream(trimmed);
+    std::string line;
+    while (std::getline(stream, line)) {
+        line = trim(line);
+        if (!line.empty() && line[0] != '#') {
+            lines.push_back(line);
+        }
+    }
+
+    if (lines.empty()) {
+        throw std::runtime_error("Schema file has no column definitions: " + path);
+    }
+
+    std::ostringstream joined;
+    for (std::size_t i = 0; i < lines.size(); ++i) {
+        if (i > 0) {
+            joined << ',';
+        }
+        joined << lines[i];
+    }
+    return parse_table_schema(joined.str());
 }
 
 TableSchema infer_table_schema(const std::vector<std::string>& headers,
@@ -146,7 +277,11 @@ TableSchema infer_table_schema(const std::vector<std::string>& headers,
 CellValue parse_cell_value(const std::string& value,
                            ColumnType type,
                            const std::string& column_name,
-                           std::size_t line_number) {
+                           std::size_t line_number,
+                           std::size_t column_number) {
+    const std::string location = "line " + std::to_string(line_number) + ", column " +
+                                 std::to_string(column_number + 1) + " ('" + column_name + "')";
+
     switch (type) {
         case ColumnType::String:
             return value;
@@ -156,9 +291,7 @@ CellValue parse_cell_value(const std::string& value,
             const char* end = value.data() + value.size();
             const auto result = std::from_chars(begin, end, parsed);
             if (result.ec != std::errc{} || result.ptr != end) {
-                throw std::runtime_error("Invalid int64 value for column '" + column_name +
-                                         "' on CSV line " + std::to_string(line_number) +
-                                         ": " + value);
+                throw std::runtime_error("Expected int64 at " + location + ", got \"" + value + "\"");
             }
             return parsed;
         }
@@ -171,9 +304,7 @@ CellValue parse_cell_value(const std::string& value,
                 }
                 return parsed;
             } catch (const std::exception&) {
-                throw std::runtime_error("Invalid double value for column '" + column_name +
-                                         "' on CSV line " + std::to_string(line_number) +
-                                         ": " + value);
+                throw std::runtime_error("Expected double at " + location + ", got \"" + value + "\"");
             }
         }
         case ColumnType::Bool: {
@@ -184,10 +315,10 @@ CellValue parse_cell_value(const std::string& value,
             if (normalized == "false" || normalized == "0" || normalized == "no") {
                 return false;
             }
-            throw std::runtime_error("Invalid bool value for column '" + column_name +
-                                     "' on CSV line " + std::to_string(line_number) +
-                                     ": " + value);
+            throw std::runtime_error("Expected bool at " + location + ", got \"" + value + "\"");
         }
     }
     throw std::runtime_error("Unsupported column type");
 }
+
+}  // namespace queryforge

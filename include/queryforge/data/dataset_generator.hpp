@@ -1,12 +1,19 @@
 #pragma once
 
 #include "queryforge/core/trade_event.hpp"
+#include "queryforge/data/table.hpp"
 
 #include <cstdint>
 #include <string>
 #include <vector>
 
+namespace queryforge {
+
 constexpr std::size_t kSymbolPoolSize = 500;
 
 std::vector<std::string> build_symbol_pool();
 std::vector<TradeEvent> generate_dataset(std::size_t rows, std::uint32_t seed = 42);
+Table generate_table(const TableSchema& schema, std::size_t rows, std::uint32_t seed = 42);
+TableSchema default_trade_schema();
+
+}  // namespace queryforge

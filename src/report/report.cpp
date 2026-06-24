@@ -1,5 +1,7 @@
 #include "queryforge/report/report.hpp"
 
+namespace queryforge {
+
 BenchmarkMetadata collect_benchmark_metadata(int warmup,
                                              int runs,
                                              std::uint32_t seed,
@@ -40,3 +42,5 @@ BenchmarkMetadata collect_benchmark_metadata(int warmup,
 
     return metadata;
 }
+
+}  // namespace queryforge

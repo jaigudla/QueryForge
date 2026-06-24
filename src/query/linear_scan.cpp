@@ -7,6 +7,7 @@
 #include <chrono>
 #include <vector>
 
+namespace queryforge {
 namespace {
 
 std::size_t count_matches(const std::vector<TradeEvent>& events, const QuerySpec& query) {
@@ -57,3 +58,5 @@ ScanResult linear_scan_benchmark(const std::vector<TradeEvent>& events,
                                  runs,
                                  warmup);
 }
+
+}  // namespace queryforge

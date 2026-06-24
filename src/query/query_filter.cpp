@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <string_view>
 
+namespace queryforge {
 namespace {
 
 std::string trim(std::string_view value) {
@@ -191,6 +192,16 @@ bool find_equality_filter(const QuerySpec& query, QueryFilter& filter) {
     return false;
 }
 
+bool find_all_equality_filters(const QuerySpec& query, std::vector<QueryFilter>& filters) {
+    filters.clear();
+    for (const QueryFilter& candidate : query.filters) {
+        if (candidate.op == QueryOperator::Equal) {
+            filters.push_back(candidate);
+        }
+    }
+    return !filters.empty();
+}
+
 bool find_range_filter(const QuerySpec& query, QueryFilter& filter) {
     for (const QueryFilter& candidate : query.filters) {
         if ((candidate.type == ColumnType::Int64 || candidate.type == ColumnType::Double) &&
@@ -201,3 +212,23 @@ bool find_range_filter(const QuerySpec& query, QueryFilter& filter) {
     }
     return false;
 }
+
+bool find_best_range_filter(const QuerySpec& query, QueryFilter& filter) {
+    bool found = false;
+    for (const QueryFilter& candidate : query.filters) {
+        if ((candidate.type == ColumnType::Int64 || candidate.type == ColumnType::Double) &&
+            candidate.op != QueryOperator::Equal) {
+            if (!found) {
+                filter = candidate;
+                found = true;
+            } else if (candidate.op == QueryOperator::Equal) {
+                continue;
+            } else {
+                filter = candidate;
+            }
+        }
+    }
+    return found;
+}
+
+}  // namespace queryforge

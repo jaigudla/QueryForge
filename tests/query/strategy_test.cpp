@@ -2,6 +2,8 @@
 
 #include "queryforge/query/strategy.hpp"
 
+using namespace queryforge;
+
 TEST_CASE("benchmark_strategies compares linear scan and hash index", "[strategy]") {
     const Table table{
         TableSchema{{{"country", ColumnType::String}, {"age", ColumnType::Int64}}},

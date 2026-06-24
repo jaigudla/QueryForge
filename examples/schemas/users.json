@@ -1,0 +1,9 @@
+{
+  "columns": [
+    {"name": "user_id", "type": "int64"},
+    {"name": "country", "type": "string"},
+    {"name": "age", "type": "int64"},
+    {"name": "score", "type": "double"},
+    {"name": "is_paid", "type": "bool"}
+  ]
+}

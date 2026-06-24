@@ -6,6 +6,8 @@
 #include <stdexcept>
 #include <vector>
 
+using namespace queryforge;
+
 TEST_CASE("compute_benchmark_stats calculates basic distribution values", "[benchmark_stats]") {
     const BenchmarkStats stats = compute_benchmark_stats({5.0, 1.0, 4.0, 2.0, 3.0});
 

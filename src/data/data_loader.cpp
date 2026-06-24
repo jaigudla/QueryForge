@@ -1,6 +1,8 @@
 #include "queryforge/data/data_loader.hpp"
 
+#include "queryforge/data/csv_line_parser.hpp"
 #include "queryforge/data/csv_schema.hpp"
+#include "queryforge/data/dataset_generator.hpp"
 
 #include <algorithm>
 #include <fstream>
@@ -11,6 +13,7 @@
 #include <string_view>
 #include <vector>
 
+namespace queryforge {
 namespace {
 
 std::string trim(std::string_view value) {
@@ -22,12 +25,10 @@ std::string trim(std::string_view value) {
     return std::string{value.substr(start, end - start + 1)};
 }
 
-std::vector<std::string> split_csv_line(const std::string& line, char delimiter) {
-    std::vector<std::string> fields;
-    std::stringstream stream(line);
-    std::string field;
-    while (std::getline(stream, field, delimiter)) {
-        fields.push_back(trim(field));
+std::vector<std::string> split_and_trim_fields(const std::string& line, char delimiter) {
+    std::vector<std::string> fields = parse_csv_line(line, delimiter);
+    for (std::string& field : fields) {
+        field = trim(field);
     }
     return fields;
 }
@@ -54,7 +55,7 @@ Table load_csv_table(const std::string& path, const CsvLoadOptions& options) {
         throw std::runtime_error("CSV input is empty: " + path);
     }
 
-    const std::vector<std::string> header = split_csv_line(line, options.delimiter);
+    const std::vector<std::string> header = split_and_trim_fields(line, options.delimiter);
 
     std::vector<std::vector<std::string>> raw_rows;
     std::size_t line_number = 1;
@@ -64,11 +65,11 @@ Table load_csv_table(const std::string& path, const CsvLoadOptions& options) {
             continue;
         }
 
-        const std::vector<std::string> fields = split_csv_line(line, options.delimiter);
+        const std::vector<std::string> fields = split_and_trim_fields(line, options.delimiter);
         if (fields.size() != header.size()) {
-            throw std::runtime_error("CSV line " + std::to_string(line_number) +
-                                     " has " + std::to_string(fields.size()) +
-                                     " fields, expected " + std::to_string(header.size()));
+            throw std::runtime_error("CSV line " + std::to_string(line_number) + " has " +
+                                     std::to_string(fields.size()) + " fields, expected " +
+                                     std::to_string(header.size()));
         }
         raw_rows.push_back(fields);
     }
@@ -106,7 +107,8 @@ Table load_csv_table(const std::string& path, const CsvLoadOptions& options) {
             row.push_back(parse_cell_value(raw_rows[row_index][source_indexes[column]],
                                            column_schema.type,
                                            column_schema.name,
-                                           row_index + 2));
+                                           row_index + 2,
+                                           source_indexes[column]));
         }
         table.rows.push_back(std::move(row));
     }
@@ -116,12 +118,7 @@ Table load_csv_table(const std::string& path, const CsvLoadOptions& options) {
 
 std::vector<TradeEvent> load_trade_events_csv(const std::string& path) {
     CsvLoadOptions options;
-    options.schema = TableSchema{{
-        {"symbol", ColumnType::String},
-        {"timestamp", ColumnType::Int64},
-        {"price", ColumnType::Double},
-        {"quantity", ColumnType::Int64},
-    }};
+    options.schema = default_trade_schema();
     const Table table = load_csv_table(path, options);
     const std::size_t symbol = column_index(table.schema, "symbol");
     const std::size_t timestamp = column_index(table.schema, "timestamp");
@@ -140,3 +137,5 @@ std::vector<TradeEvent> load_trade_events_csv(const std::string& path) {
     }
     return events;
 }
+
+}  // namespace queryforge

@@ -1,8 +1,11 @@
+#include "queryforge/data/dataset_generator.hpp"
 #include "queryforge/data/table.hpp"
 
 #include <format>
 #include <stdexcept>
 #include <type_traits>
+
+namespace queryforge {
 
 std::string column_type_name(ColumnType type) {
     switch (type) {
@@ -69,15 +72,7 @@ double cell_to_number(const CellValue& value) {
 }
 
 Table trade_events_to_table(const std::vector<TradeEvent>& events) {
-    Table table{
-        TableSchema{{
-            {"symbol", ColumnType::String},
-            {"timestamp", ColumnType::Int64},
-            {"price", ColumnType::Double},
-            {"quantity", ColumnType::Int64},
-        }},
-        {},
-    };
+    Table table{default_trade_schema(), {}};
     table.rows.reserve(events.size());
 
     for (const TradeEvent& event : events) {
@@ -91,3 +86,5 @@ Table trade_events_to_table(const std::vector<TradeEvent>& events) {
 
     return table;
 }
+
+}  // namespace queryforge

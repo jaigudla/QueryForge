@@ -7,6 +7,8 @@
 #include <fstream>
 #include <stdexcept>
 
+using namespace queryforge;
+
 namespace {
 
 std::filesystem::path write_temp_csv(const std::string& contents) {

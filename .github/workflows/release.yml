@@ -15,12 +15,15 @@ jobs:
         include:
           - os: windows-latest
             artifact: queryforge-windows
+            archive: queryforge-windows.zip
             binary: build/Release/queryforge.exe
           - os: ubuntu-latest
             artifact: queryforge-linux
+            archive: queryforge-linux.tar.gz
             binary: build/queryforge
           - os: macos-latest
             artifact: queryforge-macos
+            archive: queryforge-macos.tar.gz
             binary: build/queryforge
 
     steps:
@@ -36,8 +39,50 @@ jobs:
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
 
+      - name: Package Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path build/Release/queryforge.exe -DestinationPath ${{ matrix.archive }}
+
+      - name: Package Unix
+        if: runner.os != 'Windows'
+        run: tar -czf ${{ matrix.archive }} -C build queryforge
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: ${{ matrix.binary }}
+          path: ${{ matrix.archive }}
+
+  release:
+    name: Publish GitHub Release
+    needs: build-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          for dir in */; do
+            (cd "$dir" && sha256sum * > SHA256SUMS.txt)
+          done
+          find . -name SHA256SUMS.txt -exec cat {} \;
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/queryforge-windows/queryforge-windows.zip
+            artifacts/queryforge-windows/SHA256SUMS.txt
+            artifacts/queryforge-linux/queryforge-linux.tar.gz
+            artifacts/queryforge-linux/SHA256SUMS.txt
+            artifacts/queryforge-macos/queryforge-macos.tar.gz
+            artifacts/queryforge-macos/SHA256SUMS.txt
+          generate_release_notes: true

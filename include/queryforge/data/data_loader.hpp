@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+namespace queryforge {
+
 struct CsvLoadOptions {
     std::optional<TableSchema> schema;
     char delimiter = ',';
@@ -15,3 +17,5 @@ struct CsvLoadOptions {
 
 Table load_csv_table(const std::string& path, const CsvLoadOptions& options = {});
 std::vector<TradeEvent> load_trade_events_csv(const std::string& path);
+
+}  // namespace queryforge

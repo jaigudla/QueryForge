@@ -8,6 +8,8 @@
 #include <variant>
 #include <vector>
 
+namespace queryforge {
+
 enum class ColumnType {
     String,
     Int64,
@@ -37,3 +39,5 @@ std::size_t column_index(const TableSchema& schema, const std::string& name);
 std::string cell_to_string(const CellValue& value);
 double cell_to_number(const CellValue& value);
 Table trade_events_to_table(const std::vector<TradeEvent>& events);
+
+}  // namespace queryforge
