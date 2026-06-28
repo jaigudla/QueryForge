@@ -1,63 +1,81 @@
 # QueryForge
 
-[![CI](https://github.com/your-org/QueryForge/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/QueryForge/actions/workflows/ci.yml)
+[![CI](https://github.com/jaigudla/QueryForge/actions/workflows/ci.yml/badge.svg)](https://github.com/jaigudla/QueryForge/actions/workflows/ci.yml)
 
-QueryForge helps C++ developers choose how to query large in-memory datasets by benchmarking scans and indexes against representative data and query patterns.
+QueryForge is a C++20 command-line tool for benchmarking in-memory query strategies. Load CSV or synthetic data, run filters against multiple index layouts, and get latency distributions, memory estimates, and a strategy recommendation.
 
-If you are deciding whether to use a linear scan, hash index, sorted index, or a mix of strategies, QueryForge gives you measured latency distributions, memory overhead, build cost, and a plain-English recommendation from the terminal.
+**Stack:** C++20 · CMake · CLI11 · Catch2 · GitHub Actions
 
-## Quickstart
+## What it does
 
-Build from source:
+1. Load a typed in-memory table from CSV (inferred or explicit schema) or generate synthetic data.
+2. Run one or more `--where` filters, or a weighted `--workload` file.
+3. Benchmark applicable strategies and compare build cost, query latency (p50/p95/p99), and memory.
+4. Print a recommendation based on expected total cost for repeated queries.
 
-```powershell
+## Install
+
+**Prerequisites:** CMake 3.20+, C++20 compiler (MSVC 2019+, GCC 10+, or Clang 12+)
+
+```bash
 cmake -S . -B build
 cmake --build build
+cmake --install build --prefix install   # optional
 ```
 
-Install locally:
+On Windows with Visual Studio, the binary is usually `build\Debug\queryforge.exe` or `build\Release\queryforge.exe`. With Ninja or Make, it is `build/queryforge`.
 
-```powershell
-cmake --install build --prefix install
+## Commands
+
+| Command | Purpose |
+|---------|---------|
+| `queryforge run` | Benchmark query strategies |
+| `queryforge inspect <file>` | Preview schema and sample rows |
+| `queryforge compare <baseline> <candidate>` | Diff two JSON benchmark outputs |
+| `queryforge --version` | Print version |
+
+Run `queryforge <command> --help` for all flags.
+
+## Quick examples
+
+Benchmark trades CSV with all strategies:
+
+```bash
+queryforge run --input examples/trades.csv --where symbol=AAPL --strategy all --runs 30
 ```
 
-Run against the included CSV example:
+Inspect inferred schema:
 
-```powershell
-.\build\Debug\queryforge.exe run --input examples\trades.csv --where symbol=AAPL --strategy all --runs 30
+```bash
+queryforge inspect examples/users.csv
 ```
 
-Inspect a CSV schema:
+Arbitrary schema with explicit types:
 
-```powershell
-.\build\Debug\queryforge.exe inspect examples\users.csv
+```bash
+queryforge run --input examples/users.csv --where country=US --where age>=30 --strategy all
 ```
 
-Run against an arbitrary CSV schema with inferred types:
+Synthetic data (trade-shaped by default, or pass `--schema`):
 
-```powershell
-.\build\Debug\queryforge.exe run --input examples\users.csv --where country=US --where age>=30 --strategy all
+```bash
+queryforge run --rows 1000000 --where symbol=AAPL --strategy all --warmup 5 --runs 30 --seed 42
+queryforge run --rows 100000 --schema user_id:int64,country:string,score:double --where country=US --strategy all
 ```
 
-Run with an explicit schema file:
+JSON output for scripting:
 
-```powershell
-.\build\Debug\queryforge.exe run --input examples\users.csv --schema-file examples\schemas\users.json --where country=US
+```bash
+queryforge run --input examples/trades.csv --where symbol=AAPL --strategy all --output json
 ```
 
-Run against generated data:
+Weighted multi-query workload:
 
-```powershell
-.\build\Debug\queryforge.exe run --rows 1000000 --where symbol=AAPL --strategy all --warmup 5 --runs 30 --seed 42
+```bash
+queryforge run --input examples/trades.csv --workload examples/workloads/trades.yaml --strategy all
 ```
 
-Generate arbitrary synthetic schemas:
-
-```powershell
-.\build\Debug\queryforge.exe run --rows 100000 --schema user_id:int64,country:string,score:double --where country=US --strategy all
-```
-
-Example output:
+Example text output:
 
 ```text
 Result:
@@ -70,116 +88,78 @@ Recommendation:
   Use hash_index for this workload. Estimated total cost for 1 repeated queries is 7.3 ms.
 ```
 
-## Supported Workloads
+## Data input
 
-CSV files can use any headered schema. QueryForge infers column types by default, or you can pass `--schema` / `--schema-file`.
+CSV files must have a header row. QueryForge infers column types by default, or you can pass:
 
-Quoted CSV fields are supported (`"a,b"`, escaped quotes).
+- `--schema name:type,...` — e.g. `user_id:int64,country:string`
+- `--schema-file path` — JSON or line-based schema (see `examples/schemas/users.json`)
+- `--delimiter` — single-character delimiter (default `,`)
+- `--no-infer-schema` — require an explicit schema
 
-Trade-like data:
+Supported column types: `string`, `int64`, `double`, `bool`. Quoted fields and escaped quotes are supported.
 
-```csv
-symbol,timestamp,price,quantity
-AAPL,1600000000000000000,185.12,100
+## Query filters
+
+Use `--where` with `=`, `<`, `<=`, `>`, `>=`:
+
+```text
+symbol=AAPL
+country=US
+age>=30
+price<250
+frame_time_ms>20
+is_paid=true
 ```
 
-Non-trade data:
+`--symbol` is a deprecated shortcut for `--where symbol=<value>` on trade-shaped data.
 
-```csv
-user_id,country,age,score,is_paid
-1,US,34,91.2,true
-```
+## Strategies
 
-Current strategies:
+| Strategy | Best for |
+|----------|----------|
+| `linear_scan` | Baseline full-table scan |
+| `hash_index` | Single equality filter |
+| `composite_hash` | Multiple equality filters (AND) |
+| `sorted_index` | Numeric range filters (binary search on sorted column) |
+| `columnar_scan` | Column-major layout comparison |
+| `all` | Run every strategy that applies to the query |
 
-- `linear_scan`
-- `hash_index` for equality filters
-- `composite_hash` for multi-equality AND queries
-- `sorted_index` for numeric range filters (binary search bounds)
-- `columnar_scan` for column-major layout comparison
-- `all` to run every strategy that applies
+Pass `--repeat-count N` to model repeated queries in the recommendation. Use `--memory-profile` to report peak RSS.
 
-## CLI Examples
+## Benchmark notes
 
-Text output:
-
-```powershell
-.\build\Debug\queryforge.exe run --input examples\trades.csv --where symbol=AAPL --strategy all
-```
-
-JSON output:
-
-```powershell
-.\build\Debug\queryforge.exe run --input examples\trades.csv --where symbol=AAPL --strategy all --output json
-```
-
-Weighted workload file:
-
-```powershell
-.\build\Debug\queryforge.exe run --input examples\trades.csv --workload examples\workloads\trades.yaml --strategy all
-```
-
-Compare two JSON benchmark runs:
-
-```powershell
-.\build\Debug\queryforge.exe compare baseline.json candidate.json
-```
-
-## Benchmark Methodology
-
-- Use `--warmup` to exclude cold-start samples from timed runs.
-- Use `--runs` to control sample size; larger values reduce variance.
-- Latency numbers use `steady_clock` and are best compared on the same machine and build type.
-- CI runners are noisy; use local Release builds for meaningful timing comparisons.
-- Match counts and strategy applicability are stable regression signals in CI.
-
-## Prerequisites
-
-- CMake 3.20 or newer
-- A C++20 compiler (MSVC 2019+, GCC 10+, or Clang 12+)
-
-On Windows with the Visual Studio generator, the executable is typically at `build\Debug\queryforge.exe` or `build\Release\queryforge.exe`. With Ninja or other single-config generators, it is at `build\queryforge.exe`.
+- `--warmup` excludes cold-start iterations; `--runs` sets the sample count.
+- Timings use `steady_clock`. Compare results on the same machine and build type.
+- CI runners are noisy — use local Release builds for meaningful latency numbers.
+- Match counts and strategy applicability are validated in tests; absolute timings are not gated in CI.
 
 ## Tests
 
-```powershell
+```bash
 ctest --test-dir build -C Debug --output-on-failure
 ```
 
+Single-config generators (Ninja, Make) can omit `-C Debug`.
+
 ## Releases
 
-Tagged releases (`v*`) publish Windows, Linux, and macOS binaries through GitHub Releases. See [CHANGELOG.md](CHANGELOG.md) for version history.
+Tag pushes (`v*`) build Windows, Linux, and macOS binaries via GitHub Actions. See [CHANGELOG.md](CHANGELOG.md).
 
-Package templates:
+Optional distribution templates: [Dockerfile](Dockerfile), [Homebrew formula](packaging/homebrew/queryforge.rb), [Winget manifest](packaging/winget/queryforge.yaml).
 
-- [packaging/homebrew/queryforge.rb](packaging/homebrew/queryforge.rb)
-- [packaging/winget/queryforge.yaml](packaging/winget/queryforge.yaml)
-- [Dockerfile](Dockerfile)
-
-## Roadmap
-
-Completed in v1.0:
-
-- CSV input with schema inference and schema files
-- Query filters on arbitrary columns
-- Strategy comparison with recommendations
-- JSON output, inspect/compare commands, and CI
-
-Future work:
-
-- SIMD and parallel scan strategies
-- Streaming load for files larger than RAM
-- Published Homebrew/Winget packages tied to your GitHub org URL
-
-## Project Layout
+## Project layout
 
 ```text
 QueryForge/
-├── CMakeLists.txt
-├── include/queryforge/   # public headers
-├── src/                  # implementations
-├── tests/                # unit tests (Catch2)
-├── benchmarks/fixtures/  # regression datasets
-├── examples/             # sample datasets and workloads
-└── .github/              # CI and issue templates
+├── include/queryforge/   # Public headers
+├── src/                  # Library and CLI implementation
+├── tests/                # Catch2 unit and regression tests
+├── benchmarks/fixtures/  # Stable CSV fixtures for CI
+├── examples/             # Sample CSVs, schemas, and workloads
+└── .github/              # CI, release, and issue templates
 ```
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Bug reports and workload ideas welcome via GitHub issues.
